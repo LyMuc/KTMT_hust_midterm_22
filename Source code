@@ -1,0 +1,151 @@
+.data
+cyclone: .space 100 #Maximum length of the input string
+Message1: .asciiz "Input an English word"
+Message: .asciiz "Is cyclone word (phrase)"
+Message2: .asciiz "Not a cyclone word"
+Message3: .asciiz "Not an English word (include non-alphabetic characters)"
+Messages: .asciiz ""
+.text
+main: jal input
+output: slt $t9,$zero,$v0 
+	beq $t9, $zero, not_a_cyclone #If v0<=0 then goto not_a_cyclone case
+	la $a0, Message #Else print Is cyclone word
+	j print
+not_a_cyclone:
+slt $t9, $v0, $zero
+bne $t9, $zero, not_a_word #If v0=-1 then goto not_a_word case
+la $a0, Message2 #Else print Not a cyclone word
+j print
+not_a_word:
+la $a0, Message3 #Print "Not an English word (include non-alphabetic characters)"
+print: 
+li $v0, 59 #print string
+la $a1, Messages
+syscall
+quit: li $v0, 10 #terminate
+syscall
+endmain:
+
+input: 
+sw $fp, -4($sp) #save the frame pointer
+addi $fp, $sp, 0 #update the frame pointer 
+addi $sp, $sp, -8 #update the stack pointer, allocate space for fp and ra
+sw $ra, 0($sp)# save the return address
+
+li $v0, 54 #input string dialog
+la $a0, Message1 #Print: "Input an English word"
+la $a1, cyclone #input string
+la $a2, 100 #maximum length of the input string
+syscall
+
+la $s0, cyclone #s0: Address of the input string cyclone
+jal check_cyclone
+check_word_1by1:
+slt $t1, $zero, $v0 
+beq $t1, $zero, return #If v0<=0, meaning that phrase contains a word that is not cyclone, then phrase is not cyclone
+lb $t1, 0($s0) #Check each character of the string, one by one
+li $t2, 32 #t2: ascii code of space character
+li $t3, 10 #t3: ascii code of '\n' character
+beq $t1, $t3, return #If reach the end of the string input, then return to main function
+beq $t1, $t2, prepare_cyclone_check #If the checking character is space, then we "prepare" to check_cyclone of the next word.
+addi $s0, $s0, 1 # If not space character, then we check the next character
+j check_word_1by1
+prepare_cyclone_check:
+addi $s0, $s0, 1 #s0: the base address of the next word to be checked cyclone
+jal check_cyclone #jump to check_cyclone function
+j check_word_1by1
+
+return:
+lw $ra, 0($sp) #restore return address
+add $sp, $fp, $zero #restore stack pointer	
+lw $fp, -4($sp) #restore frame pointer
+jr $ra #jump to main
+endinput:
+
+check_cyclone:
+sw $fp, -4($sp) #save the frame pointer
+addi $fp, $sp, 0 #update the frame pointer
+addi $sp, $sp, -12 #allocate space for fp, ra, s0
+sw $s0, 0($sp) #Save address of the input string 
+sw $ra, 4($sp) #Save return address (return to input procedure)
+
+modify_string: #The string can contain non-alphabetic characters and uppercase letter, so we need to modify before checking cyclone
+li $t6, 'A'
+li $t7, 'Z'
+li $t8, 'a'
+li $t9, 'z'
+lw $s1, 0($sp) #s1: Address of the input string
+check_not_a_word:
+lb $t1, 0($s1) #Check each character of the string, one by one
+li $t2, 10 #t2=10: ascii code of '\n' character
+beq $t1, $t2, end_check_not_a_word #If reach the end of the string, then done(input is a valid English word)
+li $t2, 32 #t2=32: ascii code of 'space' character
+beq $t1, $t2, end_check_not_a_word #If reach space character, then also a valid English word
+blt $t1, $t6, done_not_a_word #If the character has the ascii code < 'A' ascii code, then not an alphabetic character, v0=-1
+bgt $t1, $t9, done_not_a_word #If the character has the ascii code > 'z' ascii code, then not an alphabetic character, v0=-1
+slt $t3, $t1, $t8 #compare the character's ascii code with 97 (ascii code of 'a')
+slt $t4, $t7, $t1 #compare the character's ascii code with 90 (ascii code of 'Z')
+and $t5, $t3, $t4 
+bne $t5, $zero, done_not_a_word #If the character has the ascii code >'Z' but <'a', then not an alphabetic character, v0=-1
+
+upper_to_lower:
+slt $t3, $t1, $t6 #compare the character's ascii code with 65 (ascii code of 'A')
+slt $t4, $t7, $t1 #compare the character's ascii code with 90 (ascii code of 'Z')
+or $t5, $t3, $t4 
+bne $t5, $zero, end_upper_to_lower #If not an uppercase, then skip 
+addi $t1, $t1, 32 #else convert to lowercase, by adding 32 to ascii code
+sb $t1, 0($s1) #store the converted character to memory
+end_upper_to_lower: 
+addi $s1, $s1, 1 #Increase the address by 1 for check_not_a_word loop
+j check_not_a_word
+end_check_not_a_word:
+
+end_modify_string:
+#Check string after modified
+li $v0, 1 #Default: The word is cyclone
+lw $s1, 0($sp) #s1: Address of the input string
+find_last_character: #We need a pointer that points to the last character of string
+lb $t1, 0($s1) #Check each character of the string, one by one
+li $t2, 10 #t2=10: ascii code of '\n' character
+beq $t1, $t2, end_last_character #If meet the end of the string then done
+li $t2, 32 #t2=32: ascii code of 'space' character
+beq $t1, $t2, end_last_character #If reach space character, then also done
+addi $s1, $s1, 1 #Else s1+=1
+j find_last_character
+end_last_character:
+addi $t1, $s1, -1 #We have $t1 point to the last character of the input string
+lw $t0, 0($sp) #t0 points to the first character of the string
+#We then now check whether the string is cyclone
+li $a0, 0 #Flag variable. Flag=0 when compare first and last, =1 when compare last and first
+check:
+blt $t1, $t0, end_check #If the first character's pointer is bigger than the last's pointer, then done check.
+lb $t8, 0($t0) #Load the first character
+lb $t9, 0($t1) #Load the last character
+bne $a0, $zero, last_and_first #If flag=1, then goto last_and_first case
+nop #If flag=0, then we are in case first_and_last
+blt $t9, $t8, done_not_cyclone #If the first character has the ascii code bigger than the last character's ascii code, than not cyclone
+addi $t0, $t0, 1 #Update the first character
+li $a0, 1 #Flag is now 1. Meaning that in next step we will compare the last and first.
+j check #continue checking cyclone
+last_and_first:
+blt $t8, $t9, done_not_cyclone #If the last character has the ascii code bigger than the first character's ascii code, than not cyclone
+addi $t1, $t1, -1 #Update the last character
+li $a0, 0 #Flag is now 0. Meaning that in next step we will compare the first and last.
+j check
+
+done_not_cyclone:
+li $v0, 0 #The word is not cyclone
+j end_check
+done_not_a_word:
+li $v0, -1 #The word is not valid
+end_check:
+lw $ra, 4($sp)
+add $sp, $fp, $zero
+lw $fp, -4($sp)
+jr $ra #Jump back to the input function
+
+end_check_cyclone:
+
+
+
+
